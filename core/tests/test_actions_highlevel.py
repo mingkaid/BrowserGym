@@ -17,7 +17,7 @@ from utils import setup_playwright
 
 from browsergym.utils.obs import flatten_dom_to_str
 from browsergym.core.action.highlevel import HighLevelActionSet
-from browsergym.core.action.parsers import highlevel_action_parser
+from browsergym.core.action.parsers import highlevel_action_parser, NamedArgument
 from browsergym.core.constants import BROWSERGYM_ID_ATTRIBUTE as BID_ATTR
 
 
@@ -56,20 +56,31 @@ def test_action_parser():
     function_calls = parser.parse_string("  a ( ) b() \n \tc()", parseAll=True)
     assert [function_name for function_name, _ in function_calls] == ["a", "b", "c"]
 
-    function_calls = parser.parse_string('a(12, 12.2, "text")', parseAll=True)
+    function_calls = parser.parse_string('a(12, 12.2, "text", (1, 2, 3), ["a", 23])', parseAll=True)
     _, function_args = function_calls[0]
-    assert function_args == [12, 12.2, "text"]
+    assert function_args == [12, 12.2, "text", (1, 2, 3), ["a", 23]]
 
     function_calls = parser.parse_string('a(x=12, y = 12.2, other = "text")', parseAll=True)
     _, function_args = function_calls[0]
-    assert function_args == [12, 12.2, "text"]
+    assert function_args == [
+        NamedArgument(name="x", value=12),
+        NamedArgument(name="y", value=12.2),
+        NamedArgument(name="other", value="text"),
+    ]
 
     function_calls = parser.parse_string('a(12, y = 12.2, other = "text")', parseAll=True)
     _, function_args = function_calls[0]
-    assert function_args == [12, 12.2, "text"]
+    assert function_args == [
+        12,
+        NamedArgument(name="y", value=12.2),
+        NamedArgument(name="other", value="text"),
+    ]
 
     with pytest.raises(ParseException):
         function_calls = parser.parse_string('a(x = 12, 12.2, other = "text")', parseAll=True)
+
+    with pytest.raises(ParseException):
+        function_calls = parser.parse_string('a(12, 12.2, 1 = "text")', parseAll=True)
 
     with pytest.raises(ParseException):
         function_calls = parser.parse_string("a(1-)", parseAll=True)
@@ -91,13 +102,22 @@ def test_action_parser():
     assert function_name == "a"
     assert function_args == ["# not comment"]
 
+    function_calls = parser.parse_string('fun(12, x="val", y={"aaa": 23})', parseAll=True)
+    function_name, function_args = function_calls[0]
+    assert function_name == "fun"
+    assert function_args == [
+        12,
+        NamedArgument(name="x", value="val"),
+        NamedArgument(name="y", value={"aaa": 23}),
+    ]
+
 
 def test_valid_action():
     action_set = HighLevelActionSet()
 
     env = gym.make(
         "browsergym/openended",
-        start_url=CHECKBOX_URL,
+        task_kwargs={"start_url": CHECKBOX_URL},
         headless=__HEADLESS,
         slow_mo=__SLOW_MO,
         timeout=__TIMEOUT,
@@ -288,7 +308,7 @@ def test_invalid_action():
 
     env = gym.make(
         "browsergym/openended",
-        start_url=CHECKBOX_URL,
+        task_kwargs={"start_url": CHECKBOX_URL},
         headless=__HEADLESS,
         slow_mo=__SLOW_MO,
         timeout=__TIMEOUT,
@@ -304,7 +324,7 @@ click("INVALID_BID")
     obs, reward, term, trunc, info = env.step(action)
 
     # error
-    assert "TimeoutError" in obs["last_action_error"]
+    assert "ValueError" in obs["last_action_error"]
 
     # invalid bid value type
     action = f"""\
@@ -450,7 +470,7 @@ def test_click_through_frames():
 
     env = gym.make(
         "browsergym/openended",
-        start_url=MULTI_IFRAME_URL,
+        task_kwargs={"start_url": MULTI_IFRAME_URL},
         headless=__HEADLESS,
         slow_mo=__SLOW_MO,
         timeout=__TIMEOUT,
@@ -490,7 +510,7 @@ def test_fill_through_iframe():
 
     env = gym.make(
         "browsergym/openended",
-        start_url=MULTI_IFRAME_URL,
+        task_kwargs={"start_url": MULTI_IFRAME_URL},
         headless=__HEADLESS,
         slow_mo=__SLOW_MO,
         timeout=__TIMEOUT,
@@ -534,7 +554,7 @@ def test_click():
 
     env = gym.make(
         "browsergym/openended",
-        start_url=CHECKBOX_URL,
+        task_kwargs={"start_url": CHECKBOX_URL},
         headless=__HEADLESS,
         slow_mo=__SLOW_MO,
         timeout=__TIMEOUT,
@@ -606,7 +626,7 @@ def test_hover():
 
     env = gym.make(
         "browsergym/openended",
-        start_url=HOVER_URL,
+        task_kwargs={"start_url": HOVER_URL},
         headless=__HEADLESS,
         slow_mo=__SLOW_MO,
         timeout=__TIMEOUT,
@@ -651,7 +671,7 @@ def test_fill_type_press():
     action_set = HighLevelActionSet(subsets=["bid", "coord"])
     env = gym.make(
         "browsergym/openended",
-        start_url=TEXT_INPUT_URL,
+        task_kwargs={"start_url": TEXT_INPUT_URL},
         headless=__HEADLESS,
         slow_mo=__SLOW_MO,
         timeout=__TIMEOUT,
@@ -806,7 +826,7 @@ def test_key_press():
 
     env = gym.make(
         "browsergym/openended",
-        start_url=TEXT_INPUT_URL,
+        task_kwargs={"start_url": TEXT_INPUT_URL},
         headless=__HEADLESS,
         slow_mo=__SLOW_MO,
         timeout=__TIMEOUT,
@@ -848,7 +868,7 @@ def test_goto():
 
     env = gym.make(
         "browsergym/openended",
-        start_url=url1,
+        task_kwargs={"start_url": url1},
         headless=__HEADLESS,
         slow_mo=__SLOW_MO,
         timeout=__TIMEOUT,
@@ -896,26 +916,22 @@ def test_scroll():
 
     env = gym.make(
         "browsergym/openended",
-        start_url=LONG_PAGE_URL,
-        headless=False,
+        task_kwargs={"start_url": LONG_PAGE_URL},
+        headless=__HEADLESS,
         slow_mo=__SLOW_MO,
         timeout=__TIMEOUT,
         action_mapping=action_set.to_python_code,
     )
 
     def extract_coords_from_elem(elem):
-        x, y = map(
-            float,
-            re.search(
-                r"\(([-+]?[0-9\.]+),[\s]*([-+]?[0-9\.]+)\)",
-                elem.get("center"),
-            ).groups(),
-        )
-        return x, y
+        return ast.literal_eval(elem.get("center"))
 
     def get_top_bottom_elems(obs):
         soup = bs4.BeautifulSoup(
-            flatten_dom_to_str(obs["dom_object"], with_center_coords=True), "lxml"
+            flatten_dom_to_str(
+                obs["dom_object"], obs["extra_element_properties"], with_center_coords=True
+            ),
+            "lxml",
         )
         top = soup.find("input", attrs={"type": "checkbox", "id": "top"})
         bottom = soup.find("input", attrs={"type": "checkbox", "id": "bottom"})
@@ -1009,7 +1025,7 @@ def test_scroll():
 # def test_meta_action():
 #     env = BrowserEnv(
 #         task_entrypoint=OpenEndedTask,
-#         start_url=TEXT_INPUT_URL,
+#         task_kwargs={"start_url": TEXT_INPUT_URL},
 #         headless=__HEADLESS__,
 #     )
 #     obs, info = env.reset()
@@ -1143,7 +1159,7 @@ def test_scroll():
 # def test_clear_success():
 #     env = BrowserEnv(
 #         task_entrypoint=OpenEndedTask,
-#         start_url=TEXT_INPUT_URL,
+#         task_kwargs={"start_url": TEXT_INPUT_URL},
 #         headless=__HEADLESS__,
 #     )
 #     obs, info = env.reset()
@@ -1213,7 +1229,7 @@ def test_scroll():
 #     """In this test, we try to build a ClearAction but we use invalid args, and we check that the action fails when executed in the environment"""
 #     env = BrowserEnv(
 #         task_entrypoint=OpenEndedTask,
-#         start_url=TEXT_INPUT_URL,
+#         task_kwargs={"start_url": TEXT_INPUT_URL},
 #         headless=__HEADLESS__,
 #     )
 #     obs, info = env.reset()
@@ -1307,7 +1323,7 @@ def test_mouse_down_up():
 
     env = gym.make(
         "browsergym/openended",
-        start_url=CHECKBOX_URL,
+        task_kwargs={"start_url": CHECKBOX_URL},
         headless=__HEADLESS,
         slow_mo=__SLOW_MO,
         timeout=__TIMEOUT,
@@ -1316,7 +1332,10 @@ def test_mouse_down_up():
 
     def get_checkbox_elem(obs):
         soup = bs4.BeautifulSoup(
-            flatten_dom_to_str(obs["dom_object"], with_center_coords=True), "lxml"
+            flatten_dom_to_str(
+                obs["dom_object"], obs["extra_element_properties"], with_center_coords=True
+            ),
+            "lxml",
         )
         checkbox = soup.find("input", attrs={"type": "checkbox", "id": "vehicle1"})
         return checkbox

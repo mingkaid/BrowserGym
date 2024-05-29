@@ -9,6 +9,7 @@ from .base import AbstractActionSet
 from .functions import (
     noop,
     send_msg_to_user,
+    report_infeasible,
     fill,
     # check,
     # uncheck,
@@ -20,6 +21,7 @@ from .functions import (
     focus,
     clear,
     drag_and_drop,
+    upload_file,
     scroll,
     mouse_move,
     mouse_up,
@@ -27,6 +29,7 @@ from .functions import (
     mouse_click,
     mouse_dblclick,
     mouse_drag_and_drop,
+    mouse_upload_file,
     keyboard_down,
     keyboard_up,
     keyboard_press,
@@ -44,6 +47,8 @@ from .parsers import highlevel_action_parser, action_docstring_parser
 
 CHAT_ACTIONS = [send_msg_to_user]
 
+INFEAS_ACTIONS = [report_infeasible]
+
 BID_ACTIONS = [
     scroll,
     fill,
@@ -58,6 +63,7 @@ BID_ACTIONS = [
     focus,
     clear,
     drag_and_drop,
+    upload_file,
 ]
 
 COORD_ACTIONS = [
@@ -68,6 +74,7 @@ COORD_ACTIONS = [
     mouse_click,
     mouse_dblclick,
     mouse_drag_and_drop,
+    mouse_upload_file,
     keyboard_down,
     keyboard_up,
     keyboard_press,
@@ -94,7 +101,7 @@ class HighLevelAction:
 
 class HighLevelActionSet(AbstractActionSet):
 
-    ActionSubset = Literal["chat", "bid", "coord", "nav", "tab", "custom"]
+    ActionSubset = Literal["chat", "infeas", "bid", "coord", "nav", "tab", "custom"]
 
     def __init__(
         self,
@@ -106,7 +113,7 @@ class HighLevelActionSet(AbstractActionSet):
         ],
         custom_actions: Optional[list[callable]] = None,
         multiaction: bool = True,
-        demo_mode: Literal["off", "default", "only_visible_elements"] = "off",
+        demo_mode: Literal["off", "default", "all_blue", "only_visible_elements"] = "off",
         strict: bool = False,
     ):
         super().__init__(strict)
@@ -127,6 +134,8 @@ class HighLevelActionSet(AbstractActionSet):
                 match subset:
                     case "chat":
                         allowed_actions.extend(CHAT_ACTIONS)
+                    case "infeas":
+                        allowed_actions.extend(INFEAS_ACTIONS)
                     case "bid":
                         allowed_actions.extend(BID_ACTIONS)
                     case "coord":
@@ -209,7 +218,7 @@ demo_mode={repr(demo_mode)}
                 examples=examples,
             )
 
-    def example_action(self, abstract: bool) -> str:
+    def example_action(self, abstract: bool, max_examples: int = 3) -> str:
         """
         Returns an example action as a string.
         """
@@ -224,22 +233,21 @@ One single action to be executed. You can only use one action at a time."""
             picked_examples = []
 
             # use fill and click examples if action is present
-            if "fill" in self.action_set:
-                picked_examples.extend(self.action_set["fill"].examples)
-            if "click" in self.action_set:
-                picked_examples.extend(self.action_set["click"].examples)
+            for action_name in ["fill", "click", "mouse_click", "keyboard_type"]:
+                if action_name in self.action_set:
+                    picked_examples.extend(self.action_set[action_name].examples)
 
-            # last resort, use all examples
+            # last resort, use all action examples
             if not picked_examples:
                 for _, action in self.action_set.items():
-                    all_examples += action.examples
+                    picked_examples += action.examples
 
             # shuffle examples
             rng = random.Random(1)
             rng.shuffle(picked_examples)
 
             if self.multiaction:
-                return "\n".join(picked_examples[:3])
+                return "\n".join(picked_examples[:max_examples])
             else:
                 return picked_examples[0]
 

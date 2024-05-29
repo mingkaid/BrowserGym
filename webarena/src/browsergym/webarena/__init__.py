@@ -1,5 +1,3 @@
-__version__ = "0.1.0rc7"
-
 from browsergym.core.registration import register_task
 
 # register the WebArena benchmark
@@ -14,6 +12,6 @@ for task_id in TASK_IDS:
     register_task(
         gym_id,
         GenericWebArenaTask,
-        kwargs={"task_id": task_id, "viewport": {"width": 1280, "height": 720}, "timeout": 10000},
+        kwargs={"task_kwargs": {"task_id": task_id}},
     )
     ALL_WEBARENA_TASK_IDS.append(gym_id)

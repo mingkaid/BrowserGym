@@ -1,5 +1,3 @@
-__version__ = "0.1.0rc7"
-
 from browsergym.core.registration import register_task
 
 from . import all
@@ -137,5 +135,5 @@ for task in ALL_MINIWOB_TASKS:
     register_task(
         task.get_task_id(),
         task,
-        kwargs={"viewport": {"width": 500, "height": 320}, "slow_mo": 100},
+        nondeterministic=task.nondeterministic,
     )

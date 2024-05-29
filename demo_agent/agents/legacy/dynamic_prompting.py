@@ -1,3 +1,7 @@
+"""
+WARNING DEPRECATED WILL BE REMOVED SOON
+"""
+
 import abc
 import difflib
 import logging
@@ -13,8 +17,8 @@ from browsergym.core.action.base import AbstractActionSet
 from browsergym.core.action.highlevel import HighLevelActionSet
 from browsergym.core.action.python import PythonActionSet
 
-from utils.llm_utils import ParseError
-from utils.llm_utils import (
+from .utils.llm_utils import ParseError
+from .utils.llm_utils import (
     count_tokens,
     image_to_jpg_base64_url,
     parse_html_tags_raise,
@@ -37,7 +41,9 @@ class Flags:
     use_concrete_example: bool = True
     use_abstract_example: bool = False
     multi_actions: bool = False
-    action_space: Literal["python", "bid", "coord", "bid+coord", "bid+nav", "coord+nav", "bid+coord+nav"] = "bid"
+    action_space: Literal[
+        "python", "bid", "coord", "bid+coord", "bid+nav", "coord+nav", "bid+coord+nav"
+    ] = "bid"
     is_strict: bool = False
     # This flag will be automatically disabled `if not chat_model_args.has_vision()`
     use_screenshot: bool = True

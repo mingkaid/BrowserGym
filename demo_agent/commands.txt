@@ -1,0 +1,51 @@
+python run_demo.py --task_name openended --start_url https://www.google.com
+
+python run_demo.py --task_name miniwob.choose-list
+
+python run_demo.py --task_name miniwob.choose-list --model_name openai/gpt-4o --use_screenshot False --use_html False
+
+python run_demo.py --task_name miniwob.choose-list --model_name openai/gpt-4o --use_screenshot False --use_html False --multi_actions False
+
+python run_demo.py --task_name miniwob.social-media --model_name openai/gpt-4-turbo --use_screenshot False --use_html False
+
+python run_demo.py --task_name miniwob.social-media --model_name openai/gpt-4-turbo --use_screenshot False --use_html True
+
+python run_demo.py --task_name miniwob.social-media --model_name openai/gpt-4-turbo --use_screenshot True --use_html True
+
+python run_demo.py --task_name miniwob.social-media --model_name openai/gpt-4-turbo --use_screenshot True --use_html True --multi_actions False
+
+python run_demo.py --task_name miniwob.social-media --model_name openai/gpt-4-turbo --use_screenshot False --use_html True --multi_actions False
+
+python run_demo.py --task_name miniwob.choose-date --model_name openai/gpt-4-turbo --use_screenshot False --use_html False
+
+python run_demo.py --task_name miniwob.choose-date --model_name openai/gpt-4-turbo --use_screenshot False --use_html False --multi_actions False
+
+python run_my_demo.py --task_name miniwob.choose-date --model_name openai/gpt-4-turbo --use_screenshot False --use_html False --multi_actions False
+
+python run_demo.py --task_name miniwob.choose-date-medium --model_name openai/gpt-4-turbo --use_screenshot False --use_html False --multi_actions False
+
+python run_demo.py --task_name miniwob.book-flight --model_name openai/gpt-4-turbo --use_screenshot False --use_html False --multi_actions False
+
+python run_my_demo.py --task_name miniwob.book-flight --model_name openai/gpt-4-turbo --use_screenshot False --use_html False --multi_actions False
+
+python run_demo.py --task_name miniwob.book-flight --model_name openai/gpt-4-turbo --use_screenshot False --use_html True --multi_actions False
+
+python run_my_demo.py --task_name miniwob.book-flight --model_name openai/gpt-4-vision-preview --use_screenshot True --use_html False --multi_actions False
+
+python run_my_demo.py --task_name miniwob.book-flight --model_name openai/gpt-4-turbo --use_screenshot False --use_html True --multi_actions False
+
+python run_my_demo.py --task_name miniwob.choose-date --model_name openai/gpt-4-turbo --use_screenshot False --use_html False --multi_actions False
+
+python run_my_demo.py --task_name miniwob.book-flight --model_name openai/gpt-4-turbo --use_screenshot False --use_html False --multi_actions False
+
+python run_my_demo.py --task_name miniwob.book-flight --model_name openai/gpt-4-turbo --use_screenshot False --use_html False --multi_actions False
+
+python run_my_demo.py --task_name miniwob.social-media --model_name openai/gpt-4-turbo --use_screenshot False --use_html True --multi_actions False
+
+python run_demo.py --task_name miniwob.search-engine --model_name openai/gpt-4-turbo --use_screenshot False --use_html True --multi_actions False
+
+python run_my_demo.py --task_name miniwob.search-engine --model_name openai/gpt-4-turbo --use_screenshot False --use_html True --multi_actions False
+
+python run_demo.py --task_name miniwob.book-flight --model_name openai/gpt-4-turbo --use_screenshot False --use_html True --multi_actions False
+
+python run_my_demo.py --task_name miniwob.book-flight --model_name openai/gpt-4-turbo --use_screenshot False --use_html True --multi_actions False
