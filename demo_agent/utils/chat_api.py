@@ -68,6 +68,7 @@ class ChatModelArgs:
     hf_hosted: bool = False
     info: dict = None
     n_retry_server: int = 4
+    n: int = 1
 
     def __post_init__(self):
         if self.model_url is not None and self.hf_hosted:
@@ -80,6 +81,7 @@ class ChatModelArgs:
                 model_name=model_name,
                 temperature=self.temperature,
                 max_tokens=self.max_new_tokens,
+                n=self.n,
             )
         else:
             return HuggingFaceChatModel(

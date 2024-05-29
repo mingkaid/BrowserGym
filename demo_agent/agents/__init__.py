@@ -14,5 +14,16 @@ class AgentArgs:
                 from agents.generic_agent import GenericAgent
 
                 return GenericAgent(chat_model_args=self.chat_model_args, **self.kwargs)
+                
+            case "MyVanillaAgent":
+                from agents.my_vanilla_agent import MyVanillaAgent
+
+                return MyVanillaAgent(chat_model_args=self.chat_model_args, **self.kwargs)
+
+            case "MyStateAgent":
+                from agents.my_state_agent import MyStateAgent
+
+                return MyStateAgent(chat_model_args=self.chat_model_args, **self.kwargs)
+                
             case _:
                 raise ValueError(f"agent_name {self.agent_name} not recognized")

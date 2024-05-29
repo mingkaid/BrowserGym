@@ -6,30 +6,31 @@ from browsergym.utils.obs import flatten_axtree_to_str, flatten_dom_to_str
 from langchain.schema import HumanMessage, SystemMessage
 
 from agents.base import Agent
-from agents import dynamic_prompting
+# from agents import dynamic_prompting
+from agents import my_prompting
 from agents.prompt_utils import prune_html
 from utils.llm_utils import ParseError, retry
 from utils.chat_api import ChatModelArgs
 
 
 @dataclass
-class GenericAgentArgs:
-    agent_name: str = "GenericAgent"
+class MyVanillaAgentArgs:
+    agent_name: str = "MyVanillaAgent"
     chat_model_args: ChatModelArgs = None
-    flags: dynamic_prompting.Flags = field(default_factory=lambda: dynamic_prompting.Flags())
+    flags: my_prompting.Flags = field(default_factory=lambda: my_prompting.Flags())
     max_retry: int = 4
 
     def make_agent(self):
-        return GenericAgent(
+        return MyVanillaAgent(
             chat_model_args=self.chat_model_args, flags=self.flags, max_retry=self.max_retry
         )
 
 
-class GenericAgent(Agent):
+class MyVanillaAgent(Agent):
     def __init__(
         self,
         chat_model_args: ChatModelArgs = None,
-        flags: dynamic_prompting.Flags = None,
+        flags: my_prompting.Flags = None,
         max_retry: int = 4,
         **kwargs,
     ):
@@ -40,20 +41,10 @@ class GenericAgent(Agent):
         self.max_retry = max_retry
 
         if flags is None:
-            self.flags = dynamic_prompting.Flags()
+            self.flags = my_prompting.Flags()
         else:
             self.flags = flags
-
-        if self.flags.use_screenshot:
-            if not self.chat_model_args.has_vision():
-                warn(
-                    """\
-
-Warning: use_screenshot is set to True, but the chat model \
-does not support vision. Disabling use_screenshot."""
-                )
-                self.flags.use_screenshot = False
-
+        
         # calling this just in case, but it should be called by benchmark before the first step
         self.reset(seed=None)
 
@@ -65,13 +56,11 @@ does not support vision. Disabling use_screenshot."""
             obs["pruned_html"] = prune_html(obs["dom_txt"])
 
         self.obs_history.append(obs)
-
-        main_prompt = dynamic_prompting.MainPrompt(
+        self.states.append('None')
+        main_prompt = my_prompting.MyMainPrompt(
             obs_history=self.obs_history,
-            actions=self.actions,
-            memories=self.memories,
-            thoughts=self.thoughts,
-            flags=self.flags,
+            states=self.states,
+            actions=self.actions
         )
 
         print('Prompt:')
@@ -79,21 +68,21 @@ does not support vision. Disabling use_screenshot."""
 
         # Determine the minimum non-None token limit from prompt, total, and input tokens, or set to None if all are None.
         maxes = (
-            self.flags.max_prompt_tokens,
+            # self.flags.max_prompt_tokens,
             self.chat_model_args.max_total_tokens,
             self.chat_model_args.max_input_tokens,
         )
         maxes = [m for m in maxes if m is not None]
         max_prompt_tokens = min(maxes) if maxes else None
 
-        prompt = dynamic_prompting.fit_tokens(
+        prompt = my_prompting.fit_tokens(
             main_prompt,
             max_prompt_tokens=max_prompt_tokens,
             model_name=self.chat_model_args.model_name,
         )
 
         chat_messages = [
-            SystemMessage(content=dynamic_prompting.SystemPrompt().prompt),
+            SystemMessage(content=my_prompting.SystemPrompt().prompt),
             HumanMessage(content=prompt),
         ]
 
@@ -120,8 +109,8 @@ does not support vision. Disabling use_screenshot."""
             ans_dict["n_retry"] = self.max_retry
 
         self.actions.append(ans_dict["action"])
-        self.memories.append(ans_dict.get("memory", None))
-        self.thoughts.append(ans_dict.get("think", None))
+        # self.memories.append(ans_dict.get("memory", None))
+        # self.thoughts.append(ans_dict.get("think", None))
 
         ans_dict["chat_messages"] = [m.content for m in chat_messages]
         ans_dict["chat_model_args"] = asdict(self.chat_model_args)
@@ -131,10 +120,9 @@ does not support vision. Disabling use_screenshot."""
 
     def reset(self, seed=None):
         self.seed = seed
-        self.memories = []
         self.actions = []
-        self.thoughts = []
         self.obs_history = []
+        self.states = []
 
     def preprocess_obs(self, obs: dict) -> dict:
         obs["dom_txt"] = flatten_dom_to_str(
@@ -156,4 +144,4 @@ does not support vision. Disabling use_screenshot."""
         obs["pruned_html"] = prune_html(obs["dom_txt"])
 
     def get_action_mapping(self) -> callable:
-        return dynamic_prompting._get_action_space(self.flags).to_python_code
+        return my_prompting._get_my_action_space().to_python_code

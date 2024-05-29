@@ -119,7 +119,7 @@ def main():
                 demo_mode=args.demo_mode,
             ),
         ),
-        max_steps=100,  # "Maximum steps for the experiment."
+        max_steps=15,  # "Maximum steps for the experiment."
         task_seed=None,
         task_name=args.task_name,
         task_kwargs=task_kwargs,

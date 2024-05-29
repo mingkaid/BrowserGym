@@ -155,6 +155,7 @@ class ExpArgs:
             stack_trace = traceback.format_exc()
 
             warn(err_msg)
+            print(stack_trace)
             if _is_debugging():
                 raise
 
@@ -312,6 +313,7 @@ def _save_steps_info(
     save_json=False,
     save_jpg=True,
 ):
+    save_json = True
     # bring err from agent_info to the top level
     if err_msg is None:
         err_msg, stack_trace = _extract_err_msg(episode_info)
