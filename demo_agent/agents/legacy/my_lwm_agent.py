@@ -2,15 +2,25 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 import traceback
 from warnings import warn
-from browsergym.utils.obs import flatten_axtree_to_str, flatten_dom_to_str
+# from browsergym.utils.obs import flatten_axtree_to_str, flatten_dom_to_str
 from langchain.schema import HumanMessage, SystemMessage
 
-from agents.base import Agent
+# from agents.base import Agent
 # from agents import dynamic_prompting
-from agents import my_prompting
-from agents.prompt_utils import prune_html
-from utils.llm_utils import ParseError, retry
-from utils.chat_api import ChatModelArgs
+# from agents import my_prompting
+# from ..legacy import dynamic_prompting
+
+# from agents.prompt_utils import prune_html
+# from utils.llm_utils import ParseError, retry
+# from utils.chat_api import ChatModelArgs
+
+from browsergym.core.action.base import AbstractActionSet
+from browsergym.utils.obs import flatten_axtree_to_str, flatten_dom_to_str, prune_html
+from browsergym.experiments import Agent, AbstractAgentArgs
+
+from ..legacy import my_prompting
+from .utils.llm_utils import ParseError, retry
+from .utils.chat_api import ChatModelArgs
 
 import itertools
 import numpy as np
@@ -19,8 +29,7 @@ import math
 
 
 @dataclass
-class MyLwmAgentArgs:
-    agent_name: str = "MyLwmAgent"
+class MyLwmAgentArgs(AbstractAgentArgs):
     chat_model_args: ChatModelArgs = None
     flags: my_prompting.Flags = field(default_factory=lambda: my_prompting.Flags())
     max_retry: int = 4
@@ -32,6 +41,31 @@ class MyLwmAgentArgs:
 
 
 class MyLwmAgent(Agent):
+    def obs_preprocessor(self, obs: dict) -> dict:
+        """
+        Augment observations with text HTML and AXTree representations, which will be stored in
+        the experiment traces.
+        """
+
+        obs = obs.copy()
+        obs["dom_txt"] = flatten_dom_to_str(
+            obs["dom_object"],
+            with_visible=self.flags.extract_visible_tag,
+            with_center_coords=self.flags.extract_coords == "center",
+            with_bounding_box_coords=self.flags.extract_coords == "box",
+            filter_visible_only=self.flags.extract_visible_elements_only,
+        )
+        obs["axtree_txt"] = flatten_axtree_to_str(
+            obs["axtree_object"],
+            with_visible=self.flags.extract_visible_tag,
+            with_center_coords=self.flags.extract_coords == "center",
+            with_bounding_box_coords=self.flags.extract_coords == "box",
+            filter_visible_only=self.flags.extract_visible_elements_only,
+        )
+        obs["pruned_html"] = prune_html(obs["dom_txt"])
+
+        return obs
+
     def __init__(
         self,
         chat_model_args: ChatModelArgs = None,
@@ -65,42 +99,65 @@ class MyLwmAgent(Agent):
         if kwargs:
             warn(f"Warning: Not using any of these arguments when initiating the agent: {kwargs}")
 
-    def encoder(self, main_prompt): 
-        state_prompt = main_prompt.get_encoder_prompt()
-
+    def get_llm_output(self, prompt, parse_func, output_keys): 
         chat_messages = [
             SystemMessage(content=my_prompting.SystemPrompt().prompt),
-            HumanMessage(content=state_prompt),
+            HumanMessage(content=prompt)
         ]
 
-        def parser(text):
-            try:
-                ans_dict = main_prompt._parse_state_answer(text)
-            except ParseError as e:
-                # these parse errors will be caught by the retry function and
-                # the chat_llm will have a chance to recover
+        def parser(text): 
+            try: 
+                ans_dict = parse_func(text)
+            except ParseError as e: 
                 return None, False, str(e)
 
             return ans_dict, True, ""
 
-        try:
+        try: 
             ans_dict = retry(self.chat_llm, chat_messages, n_retry=self.max_retry, parser=parser)
-            # inferring the number of retries, TODO: make this less hacky
             ans_dict["n_retry"] = (len(chat_messages) - 3) / 2
         except ValueError as e:
             # Likely due to maximum retry. We catch it here to be able to return
             # the list of messages for further analysis
-            ans_dict = {"state": None}
+            ans_dict = {k: None for k in output_keys}
             ans_dict["err_msg"] = str(e)
             ans_dict["stack_trace"] = traceback.format_exc()
             ans_dict["n_retry"] = self.max_retry
 
         ans_dict["chat_messages"] = [m.content for m in chat_messages]
         ans_dict["chat_model_args"] = asdict(self.chat_model_args)
-        ans_dict["prompt"] = state_prompt
+        ans_dict["prompt"] = prompt
+        
+        return ans_dict
 
-        return ans_dict["state"], ans_dict
+    def encoder(self, main_prompt): 
+        prompt = main_prompt.get_encoder_prompt()
+        ans_dict = self.get_llm_output(prompt, main_prompt._parse_encoder_answer, ['state', 'status'])
 
+        replan = (ans_dict['status'] in ['finished', 'failed'])
+
+        return ans_dict['state'], ans_dict['status'], replan
+
+    def strategy(self, main_prompt): 
+        prompt = main_prompt.get_strategy_prompt()
+        ans_dict = self.get_llm_output(prompt, main_prompt._parse_strategy_answer, ['strategy'])
+
+        return ans_dict['strategy']
+
+    def dynamics(self, main_prompt): 
+        prompt = main_prompt.get_dynamics_prompt()
+        ans_dict = self.get_llm_output(prompt, main_prompt._parse_dynamics_answer, ['next_state', 'status'])
+
+        is_terminal = (ans_dict['status'] == 'goal-reached')
+        return ans_dict['next_state'], ans_dict['status'], is_terminal
+
+    def action_reward(self, main_prompt): 
+        prompt = main_prompt.get_action_reward_prompt()
+        ans_dict = self.get_llm_output(prompt, main_prompt._parse_action_reward_answer, ['response'])
+
+        response = ans_dict["response"]
+        reward = -1 if response == 'away-from-the-goal' else 1 if response == 'towards-the-goal' else 0
+        return reward
 
     def policy(self, main_prompt): 
         # Determine the minimum non-None token limit from prompt, total, and input tokens, or set to None if all are None.
@@ -118,154 +175,9 @@ class MyLwmAgent(Agent):
             model_name=self.chat_model_args.model_name,
         )
 
-        chat_messages = [
-            SystemMessage(content=my_prompting.SystemPrompt().prompt),
-            HumanMessage(content=prompt),
-        ]
+        ans_dict = self.get_llm_output(prompt, main_prompt._parse_answer, ['action'])
 
-        def parser(text):
-            try:
-                ans_dict = main_prompt._parse_answer(text)
-            except ParseError as e:
-                # these parse errors will be caught by the retry function and
-                # the chat_llm will have a chance to recover
-                return None, False, str(e)
-
-            return ans_dict, True, ""
-
-        try:
-            ans_dict = retry(self.chat_llm_high_temp, chat_messages, n_retry=self.max_retry, parser=parser)
-            # inferring the number of retries, TODO: make this less hacky
-            ans_dict["n_retry"] = (len(chat_messages) - 3) / 2
-        except ValueError as e:
-            # Likely due to maximum retry. We catch it here to be able to return
-            # the list of messages for further analysis
-            ans_dict = {"action": None}
-            ans_dict["err_msg"] = str(e)
-            ans_dict["stack_trace"] = traceback.format_exc()
-            ans_dict["n_retry"] = self.max_retry
-
-        ans_dict["chat_messages"] = [m.content for m in chat_messages]
-        ans_dict["chat_model_args"] = asdict(self.chat_model_args)
-        ans_dict["prompt"] = main_prompt._prompt
-
-        return ans_dict["action"], ans_dict
-
-    
-    def dynamics(self, main_prompt): 
-        dynamics_prompt = main_prompt.get_dynamics_prompt()
-
-        chat_messages = [
-            SystemMessage(content=my_prompting.SystemPrompt().prompt),
-            HumanMessage(content=dynamics_prompt),
-        ]
-
-        def parser(text):
-            try:
-                ans_dict = main_prompt._parse_dynamics_answer(text)
-            except ParseError as e:
-                # these parse errors will be caught by the retry function and
-                # the chat_llm will have a chance to recover
-                return None, False, str(e)
-
-            return ans_dict, True, ""
-
-        try:
-            ans_dict = retry(self.chat_llm, chat_messages, n_retry=self.max_retry, parser=parser)
-            # inferring the number of retries, TODO: make this less hacky
-            ans_dict["n_retry"] = (len(chat_messages) - 3) / 2
-        except ValueError as e:
-            # Likely due to maximum retry. We catch it here to be able to return
-            # the list of messages for further analysis
-            ans_dict = {"next_state": None,
-                        "status": None}
-            ans_dict["err_msg"] = str(e)
-            ans_dict["stack_trace"] = traceback.format_exc()
-            ans_dict["n_retry"] = self.max_retry
-
-        ans_dict["chat_messages"] = [m.content for m in chat_messages]
-        ans_dict["chat_model_args"] = asdict(self.chat_model_args)
-        ans_dict["prompt"] = dynamics_prompt
-
-        is_terminal = (ans_dict['status'] == 'goal-reached')
-
-        return ans_dict["next_state"], is_terminal, ans_dict
-
-    def action_reward(self, main_prompt): 
-        action_reward_prompt = main_prompt.get_action_reward_prompt()
-
-        chat_messages = [
-            SystemMessage(content=my_prompting.SystemPrompt().prompt),
-            HumanMessage(content=action_reward_prompt),
-        ]
-
-        def parser(text):
-            try:
-                ans_dict = main_prompt._parse_action_reward_answer(text)
-            except ParseError as e:
-                # these parse errors will be caught by the retry function and
-                # the chat_llm will have a chance to recover
-                return None, False, str(e)
-
-            return ans_dict, True, ""
-
-        try:
-            ans_dict = retry(self.chat_llm, chat_messages, n_retry=self.max_retry, parser=parser)
-            # inferring the number of retries, TODO: make this less hacky
-            ans_dict["n_retry"] = (len(chat_messages) - 3) / 2
-        except ValueError as e:
-            # Likely due to maximum retry. We catch it here to be able to return
-            # the list of messages for further analysis
-            ans_dict = {"response": None}
-            ans_dict["err_msg"] = str(e)
-            ans_dict["stack_trace"] = traceback.format_exc()
-            ans_dict["n_retry"] = self.max_retry
-
-        ans_dict["chat_messages"] = [m.content for m in chat_messages]
-        ans_dict["chat_model_args"] = asdict(self.chat_model_args)
-        ans_dict["prompt"] = action_reward_prompt
-
-        response = ans_dict["response"]
-        reward = -1 if response == 'away-from-the-goal' else 1 if response == 'towards-the-goal' else 0
-
-        return reward, ans_dict
-
-    # def critic(self, main_prompt): 
-    #     evaluation_prompt = main_prompt.get_critic_prompt()
-
-    #     chat_messages = [
-    #         SystemMessage(content=my_prompting.SystemPrompt().prompt),
-    #         HumanMessage(content=evaluation_prompt),
-    #     ]
-
-    #     def parser(text):
-    #         try:
-    #             ans_dict = main_prompt._parse_evaluation_answer(text)
-    #         except ParseError as e:
-    #             # these parse errors will be caught by the retry function and
-    #             # the chat_llm will have a chance to recover
-    #             return None, False, str(e)
-
-    #         return ans_dict, True, ""
-
-    #     try:
-    #         ans_dict = retry(self.chat_llm, chat_messages, n_retry=self.max_retry, parser=parser)
-    #         # inferring the number of retries, TODO: make this less hacky
-    #         ans_dict["n_retry"] = (len(chat_messages) - 3) / 2
-    #     except ValueError as e:
-    #         # Likely due to maximum retry. We catch it here to be able to return
-    #         # the list of messages for further analysis
-    #         ans_dict = {"evaluation": None}
-    #         ans_dict["err_msg"] = str(e)
-    #         ans_dict["stack_trace"] = traceback.format_exc()
-    #         ans_dict["n_retry"] = self.max_retry
-
-    #     ans_dict["chat_messages"] = [m.content for m in chat_messages]
-    #     ans_dict["chat_model_args"] = asdict(self.chat_model_args)
-    #     ans_dict["prompt"] = next_state_prompt
-
-    #     return ans_dict["evaluation"], ans_dict
-
+        return ans_dict['action'], ans_dict
 
     def get_action(self, obs):
         if not "pruned_html" in obs:
@@ -275,21 +187,37 @@ class MyLwmAgent(Agent):
         main_prompt = my_prompting.MyMainPrompt(
             obs_history=self.obs_history,
             states=self.states,
+            strategies=self.strategies,
             actions=self.actions
         )
 
-        state, ans_dict = self.encoder(main_prompt)
+        state, status, replan = self.encoder(main_prompt)
         print('State:', state)
+        print('Replan Status:', status)
 
-        # main_prompt = my_prompting.MyMainPrompt(
-        #     obs_history=self.obs_history,
-        #     states=self.states,
-        #     actions=self.actions
-        # )
+        if replan or self.active_strategy is None: 
+            strategy = self.planning_search(state)
+            self.strategies.append(strategy)
+            self.active_strategy = strategy
+        else: 
+            self.strategies.append(None)
 
-        # print('Prompt:')
-        # print(main_prompt._prompt)
+        self.states.append(state)
+        main_prompt = my_prompting.MyMainPrompt(
+            obs_history=self.obs_history,
+            states=self.states,
+            strategies=self.strategies,
+            actions=self.actions,
+            active_strategy=self.active_strategy
+        )
+        action, action_dict = self.policy(main_prompt)
+        print('Action:', action)
+        self.actions.append(action)
 
+        return action, action_dict
+
+    
+    def planning_search(self, state): 
         # Run MCTS Search
         class MCTSNode(): 
             id_iter = itertools.count()
@@ -331,11 +259,12 @@ class MyLwmAgent(Agent):
                 main_prompt = my_prompting.MyMainPrompt(
                     obs_history=self.obs_history,
                     states=self.states + new_states,
-                    actions=self.actions + new_actions
+                    strategies=self.strategies + new_actions,
+                    actions=self.actions
                 )
-                node.state, node.is_terminal, node.state_dict = self.dynamics(main_prompt)
+                node.state, node.state_status, node.is_terminal = self.dynamics(main_prompt)
                 print('Next State:', node.state)
-                print('Status:', node.state_dict['status'])
+                print('Status:', node.state_status)
                 new_states.append(node.state)
 
                 # Here is a chance to reset the node reward using things like state transition certainty
@@ -354,17 +283,19 @@ class MyLwmAgent(Agent):
                 children = []
                 # Sample an action space:
                 action_space = {}
-                n_actions = 2
+                n_actions = 3
                 for i in range(n_actions): 
                     main_prompt = my_prompting.MyMainPrompt(
                         obs_history=self.obs_history,
                         states=self.states + new_states,
-                        actions=self.actions + new_actions
+                        strategies=self.strategies + new_actions,
+                        actions=self.actions
                     )
-                    action, action_dict = self.policy(main_prompt)
-                    action_space[action] = action_dict
+                    strategy = self.strategy(main_prompt)
+                    # action, action_dict = self.policy(main_prompt)
+                    action_space[strategy] = 1
                     
-                for action, action_dict in action_space.items(): 
+                for action, _ in action_space.items(): 
                     # TODO (DONE): Figrue out how fast reward is computed
                     # fast_reward = 0
                     # print(self.states + new_states)
@@ -372,16 +303,17 @@ class MyLwmAgent(Agent):
                     main_prompt = my_prompting.MyMainPrompt(
                         obs_history=self.obs_history,
                         states=self.states + new_states,
-                        actions=self.actions + new_actions + [action]
+                        strategies=self.strategies + new_actions + [action],
+                        actions=self.actions
                     )
-                    fast_reward, fast_reward_dict = self.action_reward(main_prompt)
-                    print('Strategy Candidate:', action_dict['strategy'])
-                    print('Action Candidate:', action)
+                    fast_reward = self.action_reward(main_prompt)
+                    print('Strategy Candidate:', action)
+                    # print('Action Candidate:', action)
                     print('Fast Reward:', fast_reward)
                     child = MCTSNode(state=None, action=action, parent=node,
                                      fast_reward=fast_reward)
-                    child.action_dict = action_dict
-                    child.fast_reward_dict = fast_reward_dict
+                    # child.action_dict = action_dict
+                    # child.fast_reward_dict = fast_reward_dict
                     children.append(child)
                 node.children = children
 
@@ -449,14 +381,11 @@ class MyLwmAgent(Agent):
                 return -math.inf, path
             return max((_dfs_max_reward(path + [child]) for child in visited_children), key=lambda x: x[0])
         output_cum_reward, output_iter = _dfs_max_reward([root])
-
         action, action_dict = output_iter[1].action, output_iter[1].action_dict
-        print('Selected Strategy:', action_dict['strategy'])
-        print('Selected Action:', action)
-        self.states.append(state)
-        self.actions.append(action)
+        print('Selected Strategy:', action)
+        # print('Selected Action:', action)
 
-        return action, action_dict
+        return action
 
 
     def reset(self, seed=None):
@@ -466,26 +395,27 @@ class MyLwmAgent(Agent):
         self.states = []
         self.evaluations = []
         self.strategies = []
+        self.active_strategy = None
 
 
-    def preprocess_obs(self, obs: dict) -> dict:
-        obs["dom_txt"] = flatten_dom_to_str(
-            obs["dom_object"],
-            with_visible=self.flags.extract_visible_tag,
-            with_center_coords=self.flags.extract_coords == "center",
-            with_bounding_box_coords=self.flags.extract_coords == "box",
-            filter_visible_only=self.flags.extract_visible_elements_only,
-        )
+    # def preprocess_obs(self, obs: dict) -> dict:
+    #     obs["dom_txt"] = flatten_dom_to_str(
+    #         obs["dom_object"],
+    #         with_visible=self.flags.extract_visible_tag,
+    #         with_center_coords=self.flags.extract_coords == "center",
+    #         with_bounding_box_coords=self.flags.extract_coords == "box",
+    #         filter_visible_only=self.flags.extract_visible_elements_only,
+    #     )
 
-        obs["axtree_txt"] = flatten_axtree_to_str(
-            obs["axtree_object"],
-            with_visible=self.flags.extract_visible_tag,
-            with_center_coords=self.flags.extract_coords == "center",
-            with_bounding_box_coords=self.flags.extract_coords == "box",
-            filter_visible_only=self.flags.extract_visible_elements_only,
-        )
+    #     obs["axtree_txt"] = flatten_axtree_to_str(
+    #         obs["axtree_object"],
+    #         with_visible=self.flags.extract_visible_tag,
+    #         with_center_coords=self.flags.extract_coords == "center",
+    #         with_bounding_box_coords=self.flags.extract_coords == "box",
+    #         filter_visible_only=self.flags.extract_visible_elements_only,
+    #     )
 
-        obs["pruned_html"] = prune_html(obs["dom_txt"])
+    #     obs["pruned_html"] = prune_html(obs["dom_txt"])
 
     def get_action_mapping(self) -> callable:
         return my_prompting._get_my_action_space().to_python_code
