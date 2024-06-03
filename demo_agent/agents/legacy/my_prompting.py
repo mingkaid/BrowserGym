@@ -525,7 +525,8 @@ and executed by a program, make sure to follow the formatting instructions.
         self.screenshot = obs["screenshot"]
         
         # return f"\n# Observation of current step:\n{self.error.prompt}{self.ax_tree.prompt}\n"
-        return f"\n# Observation of current step:\n{self.html.prompt}{self.ax_tree.prompt}{self.error.prompt}\n\n"
+        # return f"\n# Observation of current step:\n{self.html.prompt}{self.ax_tree.prompt}{self.error.prompt}\n\n"
+        return f"\n# Observation of current step:\n{self.ax_tree.prompt}{self.error.prompt}\n\n"
 
     def get_obs_state(self, obs, state): 
         return self.get_obs(obs) + f"\n## Inferred State:\n{state}\n"
@@ -563,14 +564,9 @@ and executed by a program, make sure to follow the formatting instructions.
 Here is an abstract version of the answer with description of the content of
 each tag. Make sure you follow this structure, but replace the content with your
 answer:
-<strategy>
-Based on the previous and the current states, describe your high-level approach to
-achieving the goal. No need for further thoughts on the state, just talk about the
-action you are going to take.
-</strategy>\
-
 <action>
-One single action to be executed. You can only use one action at a time.
+Based on the current observation, state and active strategy, select one single 
+action to be executed. You can only use one action at a time.
 </action>\
 """
 
@@ -579,11 +575,6 @@ One single action to be executed. You can only use one action at a time.
 
 Here is a concrete example of how to format your answer.
 Make sure to follow the template with proper tags:
-<strategy>
-Explore different ways to fill the form, such as clicking its elements to explore 
-options or filling parts of it with text. 
-</strategy>\
-
 <action>
 fill('32-12', 'example with "quotes"')
 </action>\
@@ -631,9 +622,10 @@ Here is an abstract version of the answer with description of the content of
 each tag. Make sure you follow this structure, but replace the content with your
 answer:
 <state>
-Summarize the observation of the current step and last error you encountered. Include details such as accessibility
-tree id when describing elements on the page. Describe the effect that your previous 
-action had, as well as elements you can interact with. No need to describe what you
+Summarize the observation of the current step and last error you encountered. Include 
+details such as accessibility tree id when describing elements on the page. Describe 
+the effect that your previous action had, as well as elements you can interact with. 
+Infer any information relevant to achieving your goal. No need to describe what you
 plan to do, just focus on giving an objective description.
 </state>\
 
@@ -641,10 +633,12 @@ plan to do, just focus on giving an objective description.
 Consider your current strategy, actions, and current state. Classify the situation into
 one of four categories based on the progress of your strategy. The categories are: 
 
-1. "finished" - Your have fully executed your strategy and can move on to the next step.
-2. "in-progress" - Your strategy is still ongoing.
-3. "not-sure" - It's unclear if your strategy has been carried out.
+1. "finished" - Your strategy has been successfully executed and you will plan for the next step. 
+2. "in-progress" - Your strategy is still ongoing and you need to take some more actions.
+3. "not-sure" - It's unclear if your strategy has been carried out and you need to reassess your plan.
 4. "failed" - Your strategy was not successful and you need to replan.
+You should be careful when assigning "in-progress" labels. If you are unsure, please
+select "not-sure" instead.
 </status>\
 """
 
@@ -662,9 +656,9 @@ suggesting the textbox may be for entering dates.
 it will submit the textbox's content to the website backend.
 </state>\
 
-<termination>
-in-progress
-</termination>\
+<status>
+failed
+</status>\
 """
         
         # prompt = self.add_screenshot(prompt)
@@ -686,9 +680,12 @@ Here is an abstract version of the answer with description of the content of
 each tag. Make sure you follow this structure, but replace the content with your
 answer:
 <strategy>
-Based on the previous and the current states, describe what you plan to do to
-achieve the goal. Avoid thoughts about the state or reasoning, just talk about the
-next action you are going to take.
+Assume the previous strategies have been carried out and the environment has 
+transitioned to the current inferred state. Describe what you plan to do to
+achieve the goal. Avoid starting phrases like "To accomplish the goal", "I will", 
+"To proceed", or "Assume the previous strategies have been carried out". Do not
+mention specific element ids as they may change during the execution; just 
+talk about the your high-level approach.
 </strategy>\
 """
 
@@ -708,9 +705,14 @@ options or filling parts of it with text.
         return prompt
 
     def get_dynamics_prompt(self) -> str:
+#         prompt = f"""\
+# {self.instructions}\
+# {self.history}\
+# {self.obs}\
+# {self.action_space._prompt}\
+# """
         prompt = f"""\
 {self.instructions}\
-{self.history}\
 {self.obs}\
 {self.action_space._prompt}\
 """
@@ -722,11 +724,11 @@ Here is an abstract version of the answer with description of the content of
 each tag. Make sure you follow this structure, but replace the content with your
 answer:
 <next_state>
-Predict the new state of the webpage after your proposed strategy is applied. 
-Describe the effect that your proposed strategy will have on the content of the page
-and how it will impact your progress towards the goal.
-Pay attention to how the element details will change. Describe the elements you can
-interact with on the changed webpage.
+Assume the environment is at the current inferred state and your proposed strategy has
+been applied. Predict the new state of the webpage after executing each part of the 
+proposed strategy, such as page content you will observe and any possible information
+you will gain that is relevant to your goal. Pay attention to how the element details 
+will change. Describe the elements you can interact with on the changed webpage.
 </next_state>\
 
 <status>
@@ -766,9 +768,14 @@ in-progress
         return prompt
 
     def get_action_reward_prompt(self) -> str:
+#         prompt = f"""\
+# {self.instructions}\
+# {self.history}\
+# {self.obs}\
+# {self.action_space._prompt}\
+# """
         prompt = f"""\
 {self.instructions}\
-{self.history}\
 {self.obs}\
 {self.action_space._prompt}\
 """
@@ -780,8 +787,8 @@ Here is an abstract version of the answer with description of the content of
 each tag. Make sure you follow this structure, but replace the content with your
 answer:
 <think>
-Observe your current state and proposed strategy in the browser environment, consider 
-the previous states and strategies, classify the proposed strategy into one of four categories 
+Observe your current state and proposed strategy in the browser environment, 
+classify the proposed strategy into one of four categories 
 based on progress towards your goal. The categories are:
 
 1. "towards-the-goal" - You are moving closer to achieving the goal.

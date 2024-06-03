@@ -134,7 +134,7 @@ class MyLwmAgent(Agent):
         prompt = main_prompt.get_encoder_prompt()
         ans_dict = self.get_llm_output(prompt, main_prompt._parse_encoder_answer, ['state', 'status'])
 
-        replan = (ans_dict['status'] in ['finished', 'failed'])
+        replan = (ans_dict['status'] in ['finished', 'failed', 'not-sure'])
 
         return ans_dict['state'], ans_dict['status'], replan
 
@@ -192,8 +192,8 @@ class MyLwmAgent(Agent):
         )
 
         state, status, replan = self.encoder(main_prompt)
-        print('State:', state)
-        print('Replan Status:', status)
+        print('*State*:', state)
+        print('*Replan Status*:', status)
 
         if replan or self.active_strategy is None: 
             strategy = self.planning_search(state)
@@ -201,6 +201,7 @@ class MyLwmAgent(Agent):
             self.active_strategy = strategy
         else: 
             self.strategies.append(None)
+        print('*Active Strategy*:', self.active_strategy)
 
         self.states.append(state)
         main_prompt = my_prompting.MyMainPrompt(
@@ -211,7 +212,7 @@ class MyLwmAgent(Agent):
             active_strategy=self.active_strategy
         )
         action, action_dict = self.policy(main_prompt)
-        print('Action:', action)
+        print('*Action*:', action)
         self.actions.append(action)
 
         return action, action_dict
@@ -247,6 +248,8 @@ class MyLwmAgent(Agent):
                     
             @property
             def Q(self):
+                if len(self.cum_rewards) == 0: 
+                    return 0
                 return np.mean(self.cum_rewards)
 
         def _expand(node, path): 
@@ -263,8 +266,9 @@ class MyLwmAgent(Agent):
                     actions=self.actions
                 )
                 node.state, node.state_status, node.is_terminal = self.dynamics(main_prompt)
-                print('Next State:', node.state)
-                print('Status:', node.state_status)
+                print('*Expanded Strategy*:', node.action)
+                print('*Next State*:', node.state)
+                print('*Status*:', node.state_status)
                 new_states.append(node.state)
 
                 # Here is a chance to reset the node reward using things like state transition certainty
@@ -307,9 +311,9 @@ class MyLwmAgent(Agent):
                         actions=self.actions
                     )
                     fast_reward = self.action_reward(main_prompt)
-                    print('Strategy Candidate:', action)
+                    print('*Strategy Candidate*:', action)
                     # print('Action Candidate:', action)
-                    print('Fast Reward:', fast_reward)
+                    print('*Fast Reward*:', fast_reward)
                     child = MCTSNode(state=None, action=action, parent=node,
                                      fast_reward=fast_reward)
                     # child.action_dict = action_dict
@@ -320,9 +324,9 @@ class MyLwmAgent(Agent):
         w_exp = 1
         depth_limit = 3
         def _uct(node): 
-            print(node.Q)
-            print(np.sqrt(np.log(len(node.parent.cum_rewards)) / max(1, len(node.cum_rewards))))
-            return node.Q + w_exp * np.sqrt(np.log(len(node.parent.cum_rewards)) / max(1, len(node.cum_rewards)))
+            uct_term = np.sqrt(np.log(len(node.parent.cum_rewards)) / max(1, len(node.cum_rewards)))
+            print(node.Q, uct_term)
+            return node.Q + w_exp * uct_term
         # _uct = lambda node: node.Q + w_exp * np.sqrt(np.log(len(node.parent.cum_rewards)) / max(1, len(node.cum_rewards)))
         _is_terminal_with_depth_limit = lambda node: node.is_terminal or node.depth >= depth_limit
 
