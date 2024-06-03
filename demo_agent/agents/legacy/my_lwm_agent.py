@@ -134,9 +134,10 @@ class MyLwmAgent(Agent):
         prompt = main_prompt.get_encoder_prompt()
         ans_dict = self.get_llm_output(prompt, main_prompt._parse_encoder_answer, ['state', 'status'])
 
+        think = ans_dict.get('think')
         replan = (ans_dict['status'] in ['finished', 'failed', 'not-sure'])
 
-        return ans_dict['state'], ans_dict['status'], replan
+        return ans_dict['state'], ans_dict['status'], replan, think
 
     def strategy(self, main_prompt): 
         prompt = main_prompt.get_strategy_prompt()
@@ -155,9 +156,10 @@ class MyLwmAgent(Agent):
         prompt = main_prompt.get_action_reward_prompt()
         ans_dict = self.get_llm_output(prompt, main_prompt._parse_action_reward_answer, ['response'])
 
+        think = ans_dict["think"]
         response = ans_dict["response"]
         reward = -1 if response == 'away-from-the-goal' else 1 if response == 'towards-the-goal' else 0
-        return reward
+        return reward, think
 
     def policy(self, main_prompt): 
         # Determine the minimum non-None token limit from prompt, total, and input tokens, or set to None if all are None.
@@ -188,11 +190,13 @@ class MyLwmAgent(Agent):
             obs_history=self.obs_history,
             states=self.states,
             strategies=self.strategies,
-            actions=self.actions
+            actions=self.actions,
+            active_strategy=self.active_strategy
         )
 
-        state, status, replan = self.encoder(main_prompt)
+        state, status, replan, think = self.encoder(main_prompt)
         print('*State*:', state)
+        print('*Replan Reasoning*:', think)
         print('*Replan Status*:', status)
 
         if replan or self.active_strategy is None: 
@@ -310,9 +314,10 @@ class MyLwmAgent(Agent):
                         strategies=self.strategies + new_actions + [action],
                         actions=self.actions
                     )
-                    fast_reward = self.action_reward(main_prompt)
+                    fast_reward, think = self.action_reward(main_prompt)
                     print('*Strategy Candidate*:', action)
                     # print('Action Candidate:', action)
+                    print('*Fast Reward Reasoning*:', think)
                     print('*Fast Reward*:', fast_reward)
                     child = MCTSNode(state=None, action=action, parent=node,
                                      fast_reward=fast_reward)

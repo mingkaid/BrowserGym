@@ -401,6 +401,7 @@ class MyMainPrompt(PromptElement):
         self.states = states
         self.strategies = strategies
         self.actions = actions
+        self.active_strategy = active_strategy
         
         self.history = self.get_history(obs_history, states, strategies, actions)
         self.instructions = self.get_goal_instruction(obs_history[-1]["goal"])
@@ -525,8 +526,8 @@ and executed by a program, make sure to follow the formatting instructions.
         self.screenshot = obs["screenshot"]
         
         # return f"\n# Observation of current step:\n{self.error.prompt}{self.ax_tree.prompt}\n"
-        # return f"\n# Observation of current step:\n{self.html.prompt}{self.ax_tree.prompt}{self.error.prompt}\n\n"
-        return f"\n# Observation of current step:\n{self.ax_tree.prompt}{self.error.prompt}\n\n"
+        return f"\n# Observation of current step:\n{self.html.prompt}{self.ax_tree.prompt}{self.error.prompt}\n\n"
+        # return f"\n# Observation of current step:\n{self.ax_tree.prompt}{self.error.prompt}\n\n"
 
     def get_obs_state(self, obs, state): 
         return self.get_obs(obs) + f"\n## Inferred State:\n{state}\n"
@@ -589,6 +590,8 @@ fill('32-12', 'example with "quotes"')
 {self.instructions}\
 {self.history}\
 {self.obs}\
+## Active Strategy:
+{self.active_strategy}\
 {self.action_space._prompt}\
 """
 #         states = self.states
@@ -629,16 +632,18 @@ Infer any information relevant to achieving your goal. No need to describe what 
 plan to do, just focus on giving an objective description.
 </state>\
 
+
 <status>
-Consider your current strategy, actions, and current state. Classify the situation into
+Observe your previous action, current state, and active strategy. Classify the situation into
 one of four categories based on the progress of your strategy. The categories are: 
 
 1. "finished" - Your strategy has been successfully executed and you will plan for the next step. 
 2. "in-progress" - Your strategy is still ongoing and you need to take some more actions.
 3. "not-sure" - It's unclear if your strategy has been carried out and you need to reassess your plan.
 4. "failed" - Your strategy was not successful and you need to replan.
-You should be careful when assigning "in-progress" labels. If you are unsure, please
-select "not-sure" instead.
+
+You should be extra careful when assigning "in-progress" labels. If you are unsure, 
+please select "not-sure" instead.
 </status>\
 """
 
@@ -657,7 +662,7 @@ it will submit the textbox's content to the website backend.
 </state>\
 
 <status>
-failed
+not-sure
 </status>\
 """
         
@@ -685,7 +690,7 @@ transitioned to the current inferred state. Describe what you plan to do to
 achieve the goal. Avoid starting phrases like "To accomplish the goal", "I will", 
 "To proceed", or "Assume the previous strategies have been carried out". Do not
 mention specific element ids as they may change during the execution; just 
-talk about the your high-level approach.
+talk about the your high-level approach. Limit your answer to one sentence.
 </strategy>\
 """
 
@@ -841,6 +846,7 @@ away-from-the-goal
 
     def _parse_encoder_answer(self, text_answer): 
         ans_dict = {}
+        ans_dict.update(parse_html_tags_raise(text_answer, optional_keys=["think"], merge_multiple=True))
         ans_dict.update(parse_html_tags_raise(text_answer, keys=["state", "status"], merge_multiple=True))
         return ans_dict
 
