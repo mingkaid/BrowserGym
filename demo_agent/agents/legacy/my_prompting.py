@@ -215,6 +215,43 @@ def fit_tokens(
     )
     return prompt
 
+def _get_action_space(flags: Flags) -> AbstractActionSet:
+    match flags.action_space:
+        case "python":
+            action_space = PythonActionSet(strict=flags.is_strict)
+            if flags.multi_actions:
+                warn(
+                    f"Flag action_space={repr(flags.action_space)} incompatible with multi_actions={repr(flags.multi_actions)}."
+                )
+            if flags.demo_mode != "off":
+                warn(
+                    f"Flag action_space={repr(flags.action_space)} incompatible with demo_mode={repr(flags.demo_mode)}."
+                )
+            return action_space
+        case "bid":
+            action_subsets = ["chat", "bid"]
+        case "coord":
+            action_subsets = ["chat", "coord"]
+        case "bid+coord":
+            action_subsets = ["chat", "bid", "coord"]
+        case "bid+nav":
+            action_subsets = ["chat", "bid", "nav"]
+        case "coord+nav":
+            action_subsets = ["chat", "coord", "nav"]
+        case "bid+coord+nav":
+            action_subsets = ["chat", "bid", "coord", "nav"]
+        case _:
+            raise NotImplementedError(f"Unknown action_space {repr(flags.action_space)}")
+
+    action_space = HighLevelActionSet(
+        subsets=action_subsets,
+        multiaction=flags.multi_actions,
+        strict=flags.is_strict,
+        demo_mode=flags.demo_mode,
+    )
+
+    return action_space
+
 
 class HTML(Trunkater):
     def __init__(self, html, visible: bool = True, prefix="") -> None:
@@ -526,8 +563,8 @@ and executed by a program, make sure to follow the formatting instructions.
         self.screenshot = obs["screenshot"]
         
         # return f"\n# Observation of current step:\n{self.error.prompt}{self.ax_tree.prompt}\n"
-        return f"\n# Observation of current step:\n{self.html.prompt}{self.ax_tree.prompt}{self.error.prompt}\n\n"
-        # return f"\n# Observation of current step:\n{self.ax_tree.prompt}{self.error.prompt}\n\n"
+        # return f"\n# Observation of current step:\n{self.html.prompt}{self.ax_tree.prompt}{self.error.prompt}\n\n"
+        return f"\n# Observation of current step:\n{self.ax_tree.prompt}{self.error.prompt}\n\n"
 
     def get_obs_state(self, obs, state): 
         return self.get_obs(obs) + f"\n## Inferred State:\n{state}\n"
@@ -685,12 +722,13 @@ Here is an abstract version of the answer with description of the content of
 each tag. Make sure you follow this structure, but replace the content with your
 answer:
 <strategy>
-Assume the previous strategies have been carried out and the environment has 
-transitioned to the current inferred state. Describe what you plan to do to
+Assume the previous actions have been carried out and the environment has 
+transitioned to the current inferred state. Describe your next action to
 achieve the goal. Avoid starting phrases like "To accomplish the goal", "I will", 
 "To proceed", or "Assume the previous strategies have been carried out". Do not
-mention specific element ids as they may change during the execution; just 
-talk about the your high-level approach. Limit your answer to one sentence.
+mention specific element ids as they may change during the execution. 
+Limit your answer to one sentence. Include any details that make it easier
+for someone else to select the right action.
 </strategy>\
 """
 

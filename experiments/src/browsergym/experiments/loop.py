@@ -40,6 +40,7 @@ class EnvArgs:
     storage_state: Optional[str | Path | dict] = None
     task_kwargs: dict = field(default_factory=lambda: {})
 
+    
     def make_env(self, action_mapping, exp_dir):
         extra_kwargs = {}
         if self.record_video:
@@ -329,6 +330,7 @@ class StepInfo:
         t = self.profiling
         t.env_start = time.time()
         self.obs, env_info = env.reset(seed=seed)
+        # self.obs, env_info = env.reset()
         self.reward, self.terminated, self.truncated = 0, False, False
         t.env_stop = time.time()
 
@@ -651,6 +653,7 @@ def _move_old_exp(exp_dir):
 def _get_env_name(task_name: str):
     """Register tasks if needed (lazy import) and return environment name."""
 
+    print(task_name)
     # lazy benchmark import
     if task_name.startswith("miniwob"):
         import browsergym.miniwob
@@ -658,6 +661,7 @@ def _get_env_name(task_name: str):
         import browsergym.workarena
     elif task_name.startswith("webarena"):
         import browsergym.webarena
+        print('webarena imported')
 
     return f"browsergym/{task_name}"
 

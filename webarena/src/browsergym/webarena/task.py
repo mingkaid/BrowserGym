@@ -30,6 +30,8 @@ class GenericWebArenaTask(AbstractBrowserTask):
     ) -> None:
         super().__init__(seed)
 
+        task_id = 310
+
         # task properties, will be used to set up the browsergym environment
         self.viewport = {"width": 1280, "height": 720}
         self.slow_mo = 1000  # ms

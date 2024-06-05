@@ -52,8 +52,19 @@ python run_my_demo.py --task_name miniwob.search-engine --model_name openai/gpt-
 
 python run_my_demo.py --task_name miniwob.search-engine --model_name openai/gpt-4o --use_screenshot False --use_html True --multi_actions False
 
+python run_my_demo.py --task_name miniwob.search-engine --model_name openai/gpt-4-turbo --use_screenshot False --use_html True --multi_actions False
+
 python run_demo.py --task_name miniwob.book-flight --model_name openai/gpt-4-turbo --use_screenshot False --use_html True --multi_actions False
 
 python run_my_demo.py --task_name miniwob.book-flight --model_name openai/gpt-4-turbo --use_screenshot False --use_html True --multi_actions False
 
 python run_my_demo.py --task_name miniwob.book-flight --model_name openai/gpt-4-turbo --use_screenshot False --use_html True --multi_actions False
+
+python run_my_demo.py --task_name miniwob.book-flight --model_name openai/gpt-4o --use_screenshot False --use_html True --multi_actions False
+
+python run_my_demo.py --task_name miniwob.use-autocomplete --model_name openai/gpt-4o --use_screenshot False --use_html True --multi_actions False
+
+python run_my_demo.py --task_name webarena.310 --model_name openai/gpt-4o --use_screenshot False --use_html True --multi_actions False
+
+python run_demo.py --task_name webarena.310 --model_name openai/gpt-4o --use_screenshot False --use_html False --multi_actions False
+

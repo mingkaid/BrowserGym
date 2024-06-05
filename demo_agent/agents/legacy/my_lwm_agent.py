@@ -73,6 +73,8 @@ class MyLwmAgent(Agent):
         max_retry: int = 4,
         **kwargs,
     ):
+
+        
         if chat_model_args is None:
             chat_model_args = ChatModelArgs()
         self.chat_llm = chat_model_args.make_chat_model()
@@ -92,6 +94,7 @@ class MyLwmAgent(Agent):
             self.flags = my_prompting.Flags()
         else:
             self.flags = flags
+        self.action_set = my_prompting._get_action_space(self.flags)
         
         # calling this just in case, but it should be called by benchmark before the first step
         self.reset(seed=None)
@@ -156,7 +159,7 @@ class MyLwmAgent(Agent):
         prompt = main_prompt.get_action_reward_prompt()
         ans_dict = self.get_llm_output(prompt, main_prompt._parse_action_reward_answer, ['response'])
 
-        think = ans_dict["think"]
+        think = ans_dict.get("think")
         response = ans_dict["response"]
         reward = -1 if response == 'away-from-the-goal' else 1 if response == 'towards-the-goal' else 0
         return reward, think
@@ -199,6 +202,8 @@ class MyLwmAgent(Agent):
         print('*Replan Reasoning*:', think)
         print('*Replan Status*:', status)
 
+        replan = True
+        print('*Force Replan*')
         if replan or self.active_strategy is None: 
             strategy = self.planning_search(state)
             self.strategies.append(strategy)
